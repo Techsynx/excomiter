@@ -1,0 +1,39 @@
+name: Auto Commit Every 6 Hours
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours (UTC)
+  workflow_dispatch:       # allows manual triggering
+
+permissions:
+  contents: write          # allow the workflow to push commits
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Make a small change
+        run: |
+          # create or append a timestamp to a file
+          echo "Auto-commit: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> auto-commit.txt
+
+      - name: Commit and push changes
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add auto-commit.txt
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: auto update $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            git push origin HEAD:refs/heads/${BRANCH}
+          fi
