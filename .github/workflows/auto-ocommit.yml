@@ -1,0 +1,60 @@
+name: Auto Commit Every 6 Hours
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours (UTC)
+  workflow_dispatch:       # allows manual triggering
+
+permissions:
+  contents: write          # allow checkout/push & PR creation
+  pull-requests: write
+
+jobs:
+  auto-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - id: make_commit
+        name: Make a small change and push to a new branch
+        run: |
+          TS=$(date -u +'%Y%m%dT%H%M%SZ')
+          BRANCH="auto-commit/${TS}"
+          echo "Auto-commit: $(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> auto-commit.txt
+          git checkout -b "$BRANCH"
+          git add auto-commit.txt
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "chore: auto update ${TS}"
+            git push -u origin "$BRANCH"
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pull Request (if branch created)
+        if: steps.make_commit.outputs.created == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: auto update ${{ steps.make_commit.outputs.branch }}"
+          title: "Auto-commit: ${{ steps.make_commit.outputs.branch }}"
+          body: |
+            This PR was created automatically by a scheduled workflow that runs every 6 hours.
+          head: ${{ steps.make_commit.outputs.branch }}
+          base: ${{ github.ref_name }}
+          labels: automated, auto-commit
